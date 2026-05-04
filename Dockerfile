@@ -10,6 +10,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 RUN apt-get update && apt-get install -y --no-install-recommends \
         python3.12 python3.12-venv python3.12-dev python3-pip \
         build-essential \
+        ffmpeg \
         libopus-dev libopus0 libsndfile1-dev \
         git curl ca-certificates tzdata \
     && ln -sf /usr/bin/python3.12 /usr/bin/python3 \
