@@ -5,6 +5,8 @@ from nat_xiaozhi_voice.frontend.web_chat import (
     WebChatValidationError,
     build_error_response,
     build_success_response,
+    encode_stream_event,
+    pop_tts_segment,
     normalize_chat_text,
 )
 
@@ -48,6 +50,32 @@ class WebChatHelperTests(unittest.TestCase):
             build_error_response("text is empty"),
             {"status": "error", "message": "text is empty"},
         )
+
+    def test_encode_stream_event_is_ndjson_bytes(self):
+        event = encode_stream_event("delta", text="你好")
+        self.assertIsInstance(event, bytes)
+        self.assertTrue(event.endswith(b"\n"))
+        self.assertIn('"type":"delta"', event.decode("utf-8"))
+        self.assertIn('"text":"你好"', event.decode("utf-8"))
+
+    def test_pop_tts_segment_splits_first_sentence_early(self):
+        segment, remaining, is_first = pop_tts_segment("你好，今天很高兴", True)
+        self.assertEqual(segment, "你好，")
+        self.assertEqual(remaining, "今天很高兴")
+        self.assertFalse(is_first)
+
+    def test_pop_tts_segment_waits_without_boundary(self):
+        segment, remaining, is_first = pop_tts_segment("这是一段还没结束的话", False)
+        self.assertIsNone(segment)
+        self.assertEqual(remaining, "这是一段还没结束的话")
+        self.assertFalse(is_first)
+
+    def test_pop_tts_segment_flushes_long_text(self):
+        text = "a" * 151
+        segment, remaining, is_first = pop_tts_segment(text, True)
+        self.assertEqual(segment, text)
+        self.assertEqual(remaining, "")
+        self.assertFalse(is_first)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,7 @@
 (function () {
   const statusText = document.getElementById("statusText");
+  const voiceStatus = document.getElementById("voiceStatus");
+  const volumeMeter = document.getElementById("volumeMeter");
   const messageList = document.getElementById("messageList");
   const composerForm = document.getElementById("composerForm");
   const messageInput = document.getElementById("messageInput");
@@ -8,9 +10,28 @@
   const autoPlayToggle = document.getElementById("autoPlayToggle");
   const deviceIdInput = document.getElementById("deviceIdInput");
   const saveDeviceButton = document.getElementById("saveDeviceButton");
+  const voiceButton = document.getElementById("voiceButton");
+  const interruptButton = document.getElementById("interruptButton");
+
+  const VOICE_START_THRESHOLD = 0.035;
+  const SILENCE_MS = 950;
+  const MIN_RECORDING_MS = 350;
+  const MAX_RECORDING_MS = 15000;
 
   let lastAudioUrl = null;
   let currentAudio = null;
+  let audioQueue = [];
+  let streamAbortController = null;
+  let voiceEnabled = false;
+  let micStream = null;
+  let audioContext = null;
+  let analyser = null;
+  let analyserBuffer = null;
+  let mediaRecorder = null;
+  let recordedChunks = [];
+  let recordingStartedAt = 0;
+  let lastVoiceAt = 0;
+  let monitorFrame = null;
 
   function getDeviceId() {
     const stored = localStorage.getItem("xiaozhi-web-device-id");
@@ -24,6 +45,10 @@
     statusText.textContent = text;
     statusText.classList.remove("error", "warning");
     if (kind) statusText.classList.add(kind);
+  }
+
+  function setVoiceStatus(text) {
+    voiceStatus.textContent = text;
   }
 
   function clearEmptyState() {
@@ -44,13 +69,14 @@
     meta.textContent = role === "user" ? "You" : "Xiaozhi";
 
     const body = document.createElement("span");
-    body.textContent = text;
+    body.textContent = text || "";
 
     bubble.appendChild(meta);
     bubble.appendChild(body);
     item.appendChild(bubble);
     messageList.appendChild(item);
     messageList.scrollTop = messageList.scrollHeight;
+    return body;
   }
 
   function base64ToBlobUrl(dataBase64, mimeType) {
@@ -63,37 +89,56 @@
     return URL.createObjectURL(blob);
   }
 
-  async function playAudio(url) {
+  function stopCurrentAudio() {
     if (currentAudio) {
       currentAudio.pause();
+      currentAudio.src = "";
       currentAudio = null;
     }
-    currentAudio = new Audio(url);
-    currentAudio.onplay = () => setStatus("Playing reply audio...");
-    currentAudio.onended = () => setStatus("Ready.");
-    currentAudio.onerror = () => setStatus("Audio playback failed. Use Replay or check browser audio.", "warning");
-    await currentAudio.play();
+    audioQueue = [];
   }
 
-  async function handleAudio(audio) {
-    if (!audio || !audio.data_base64) {
-      replayButton.disabled = true;
-      return;
+  function interruptCurrent(reason) {
+    if (streamAbortController) {
+      streamAbortController.abort();
+      streamAbortController = null;
     }
+    stopCurrentAudio();
+    interruptButton.disabled = true;
+    if (reason) setStatus(reason, "warning");
+  }
 
-    if (lastAudioUrl) URL.revokeObjectURL(lastAudioUrl);
-    lastAudioUrl = base64ToBlobUrl(audio.data_base64, audio.mime_type || "audio/mpeg");
-    replayButton.disabled = false;
-
-    if (autoPlayToggle.checked) {
-      try {
-        await playAudio(lastAudioUrl);
-      } catch (error) {
-        setStatus("Browser blocked autoplay. Press Replay to listen.", "warning");
+  function playNextAudio() {
+    if (currentAudio || audioQueue.length === 0 || !autoPlayToggle.checked) return;
+    const url = audioQueue.shift();
+    currentAudio = new Audio(url);
+    currentAudio.onplay = () => setStatus("Playing reply audio...");
+    currentAudio.onended = () => {
+      currentAudio = null;
+      if (audioQueue.length > 0) playNextAudio();
+      else {
+        interruptButton.disabled = streamAbortController === null;
+        setStatus("Ready.");
       }
-    } else {
-      setStatus("Reply ready. Press Replay to listen.");
-    }
+    };
+    currentAudio.onerror = () => {
+      currentAudio = null;
+      setStatus("Audio playback failed. Press Replay or check browser audio.", "warning");
+      playNextAudio();
+    };
+    currentAudio.play().catch(() => {
+      currentAudio = null;
+      setStatus("Browser blocked autoplay. Press Replay to listen.", "warning");
+    });
+  }
+
+  function enqueueAudio(audio) {
+    if (!audio || !audio.data_base64) return;
+    const url = base64ToBlobUrl(audio.data_base64, audio.mime_type || "audio/mpeg");
+    lastAudioUrl = url;
+    replayButton.disabled = false;
+    audioQueue.push(url);
+    playNextAudio();
   }
 
   async function refreshHealth() {
@@ -102,48 +147,217 @@
       if (!response.ok) throw new Error("health request failed");
       const data = await response.json();
       const ttsState = data.pipeline && data.pipeline.tts ? "TTS ready" : "TTS not ready";
-      setStatus("Service online. " + ttsState + ".");
+      const asrState = data.pipeline && data.pipeline.asr ? "ASR ready" : "ASR not ready";
+      setStatus("Service online. " + asrState + ", " + ttsState + ".");
     } catch (error) {
       setStatus("Service health check failed.", "error");
     }
   }
 
+  async function readNdjson(response, onEvent) {
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      buffer += decoder.decode(result.value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        onEvent(JSON.parse(line));
+      }
+    }
+    buffer += decoder.decode();
+    if (buffer.trim()) onEvent(JSON.parse(buffer));
+  }
+
   async function sendMessage(text) {
+    interruptCurrent();
     appendMessage("user", text);
+    const assistantBody = appendMessage("assistant", "");
+    let assistantText = "";
+
     sendButton.disabled = true;
-    messageInput.disabled = true;
+    interruptButton.disabled = false;
+    streamAbortController = new AbortController();
     setStatus("Thinking...");
 
     try {
-      const response = await fetch("/api/web-chat", {
+      const response = await fetch("/api/web-chat-stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           device_id: deviceIdInput.value.trim() || "web-client",
           text: text,
         }),
+        signal: streamAbortController.signal,
       });
-      const data = await response.json();
+      if (!response.ok || !response.body) throw new Error("stream request failed");
 
-      if (data.status === "error") {
-        setStatus(data.message || "Chat request failed.", "error");
-        return;
-      }
-
-      appendMessage("assistant", data.reply || "");
-      if (data.status === "partial") {
-        setStatus(data.error || "Reply received without audio.", "warning");
-      } else {
-        setStatus("Generating playback...");
-      }
-      await handleAudio(data.audio);
+      await readNdjson(response, (event) => {
+        if (event.type === "start") {
+          setStatus("Streaming reply...");
+        } else if (event.type === "delta") {
+          assistantText += event.text || "";
+          assistantBody.textContent = assistantText;
+          messageList.scrollTop = messageList.scrollHeight;
+        } else if (event.type === "audio") {
+          enqueueAudio(event);
+        } else if (event.type === "audio_error") {
+          setStatus(event.message || "Audio generation failed.", "warning");
+        } else if (event.type === "done") {
+          if (event.text) {
+            assistantText = event.text;
+            assistantBody.textContent = assistantText;
+          }
+          setStatus(audioQueue.length > 0 || currentAudio ? "Playing reply audio..." : "Ready.");
+        } else if (event.type === "error") {
+          setStatus(event.message || "Chat stream failed.", "error");
+        }
+      });
     } catch (error) {
-      setStatus("Network error while sending message.", "error");
+      if (error.name !== "AbortError") {
+        setStatus("Network error while streaming reply.", "error");
+      }
     } finally {
+      streamAbortController = null;
       sendButton.disabled = false;
+      interruptButton.disabled = currentAudio === null;
       messageInput.disabled = false;
       messageInput.focus();
     }
+  }
+
+  function getRecorderMimeType() {
+    const types = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/ogg;codecs=opus",
+      "audio/mp4",
+    ];
+    return types.find((type) => MediaRecorder.isTypeSupported(type)) || "";
+  }
+
+  function startRecording() {
+    if (!micStream || mediaRecorder) return;
+    interruptCurrent("Listening...");
+    recordedChunks = [];
+    recordingStartedAt = performance.now();
+    lastVoiceAt = recordingStartedAt;
+    const mimeType = getRecorderMimeType();
+    mediaRecorder = new MediaRecorder(micStream, mimeType ? { mimeType } : undefined);
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data && event.data.size > 0) recordedChunks.push(event.data);
+    };
+    mediaRecorder.onstop = () => {
+      const stoppedRecorder = mediaRecorder;
+      mediaRecorder = null;
+      const blob = new Blob(recordedChunks, { type: stoppedRecorder.mimeType || "audio/webm" });
+      recordedChunks = [];
+      if (blob.size > 0) uploadRecording(blob);
+    };
+    mediaRecorder.start();
+    setVoiceStatus("Recording...");
+  }
+
+  function stopRecording() {
+    if (!mediaRecorder || mediaRecorder.state === "inactive") return;
+    mediaRecorder.stop();
+    setVoiceStatus("Recognizing...");
+  }
+
+  async function uploadRecording(blob) {
+    try {
+      const deviceId = deviceIdInput.value.trim() || "web-client";
+      const response = await fetch("/api/web-asr?device_id=" + encodeURIComponent(deviceId), {
+        method: "POST",
+        headers: { "Content-Type": blob.type || "application/octet-stream" },
+        body: blob,
+      });
+      const data = await response.json();
+      if (data.status !== "ok" || !data.text) {
+        setVoiceStatus(data.message || "No speech recognized.");
+        return;
+      }
+      setVoiceStatus("Recognized: " + data.text);
+      sendMessage(data.text);
+    } catch (error) {
+      setVoiceStatus("ASR upload failed.");
+      setStatus("Could not recognize microphone audio.", "error");
+    }
+  }
+
+  function monitorVolume() {
+    if (!voiceEnabled || !analyser) return;
+    analyser.getByteTimeDomainData(analyserBuffer);
+    let sum = 0;
+    for (let i = 0; i < analyserBuffer.length; i += 1) {
+      const value = (analyserBuffer[i] - 128) / 128;
+      sum += value * value;
+    }
+    const rms = Math.sqrt(sum / analyserBuffer.length);
+    volumeMeter.style.width = Math.min(100, Math.round(rms * 420)) + "%";
+
+    const now = performance.now();
+    if (rms > VOICE_START_THRESHOLD) {
+      lastVoiceAt = now;
+      if (!mediaRecorder) startRecording();
+    } else if (
+      mediaRecorder &&
+      now - lastVoiceAt > SILENCE_MS &&
+      now - recordingStartedAt > MIN_RECORDING_MS
+    ) {
+      stopRecording();
+    }
+
+    if (mediaRecorder && now - recordingStartedAt > MAX_RECORDING_MS) {
+      stopRecording();
+    }
+    monitorFrame = requestAnimationFrame(monitorVolume);
+  }
+
+  async function startVoiceMode() {
+    if (voiceEnabled) return;
+    try {
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      audioContext = new AudioContext();
+      const source = audioContext.createMediaStreamSource(micStream);
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 1024;
+      analyserBuffer = new Uint8Array(analyser.fftSize);
+      source.connect(analyser);
+      voiceEnabled = true;
+      voiceButton.textContent = "Stop voice";
+      setVoiceStatus("Voice mode on. Start speaking.");
+      monitorVolume();
+    } catch (error) {
+      setVoiceStatus("Microphone permission denied or unavailable.");
+      setStatus("Microphone is unavailable.", "error");
+    }
+  }
+
+  function stopVoiceMode() {
+    voiceEnabled = false;
+    if (monitorFrame) cancelAnimationFrame(monitorFrame);
+    monitorFrame = null;
+    if (mediaRecorder) stopRecording();
+    if (micStream) micStream.getTracks().forEach((track) => track.stop());
+    micStream = null;
+    if (audioContext) audioContext.close();
+    audioContext = null;
+    analyser = null;
+    analyserBuffer = null;
+    volumeMeter.style.width = "0%";
+    voiceButton.textContent = "Start voice";
+    setVoiceStatus("Voice idle.");
   }
 
   composerForm.addEventListener("submit", function (event) {
@@ -166,9 +380,17 @@
 
   replayButton.addEventListener("click", function () {
     if (!lastAudioUrl) return;
-    playAudio(lastAudioUrl).catch(function () {
-      setStatus("Audio playback failed. Check output device and browser permissions.", "error");
-    });
+    audioQueue = [lastAudioUrl];
+    playNextAudio();
+  });
+
+  interruptButton.addEventListener("click", function () {
+    interruptCurrent("Interrupted.");
+  });
+
+  voiceButton.addEventListener("click", function () {
+    if (voiceEnabled) stopVoiceMode();
+    else startVoiceMode();
   });
 
   saveDeviceButton.addEventListener("click", function () {

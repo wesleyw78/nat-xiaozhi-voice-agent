@@ -18,9 +18,9 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Awaitable, Callable, Optional
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
@@ -30,8 +30,12 @@ from nat_xiaozhi_voice.frontend.web_chat import (
     WebChatValidationError,
     build_error_response,
     build_success_response,
+    decode_web_audio_to_pcm,
+    encode_stream_event,
     normalize_chat_text,
+    pop_tts_segment,
 )
+from nat_xiaozhi_voice.pipeline.tts import _clean_for_tts
 from nat_xiaozhi_voice.pipeline.asr import FunASRRecognizer
 from nat_xiaozhi_voice.pipeline.tts import CosyVoiceTTS, EdgeTTS
 from nat_xiaozhi_voice.pipeline.vad import SileroVAD
@@ -186,7 +190,9 @@ class XiaozhiWSServer:
         app.add_api_route("/api/memory/{device_id:path}", self._clear_device_memory, methods=["DELETE"])
 
         app.add_api_route("/api/speak", self._speak, methods=["POST"])
+        app.add_api_route("/api/web-asr", self._web_asr, methods=["POST"])
         app.add_api_route("/api/web-chat", self._web_chat, methods=["POST"])
+        app.add_api_route("/api/web-chat-stream", self._web_chat_stream, methods=["POST"])
 
         # Proxy-friendly routes (no /api/ prefix) for NAT UI access
         app.add_api_route("/memory", self._list_memory, methods=["GET"])
@@ -446,6 +452,153 @@ class XiaozhiWSServer:
             audio_bytes=audio_bytes,
             mime_type=mime_type,
         )
+
+    async def _web_asr(
+        self,
+        request: Request,
+        device_id: str = Query("web-client"),
+    ):
+        """POST /api/web-asr — decode browser microphone audio and run ASR."""
+        if self._asr is None:
+            return build_error_response("ASR not ready")
+
+        audio_bytes = await request.body()
+        if not audio_bytes:
+            return build_error_response("audio is empty")
+
+        try:
+            pcm = await asyncio.to_thread(decode_web_audio_to_pcm, audio_bytes)
+            text = await self._asr.recognize(pcm)
+        except Exception:
+            logger.exception("/api/web-asr failed for device=%s", device_id)
+            return build_error_response("ASR failed")
+
+        text = str(text or "").strip()
+        if not text:
+            return build_error_response("text is empty")
+        return {"status": "ok", "device_id": device_id or "web-client", "text": text}
+
+    async def _web_chat_stream(self, req: WebChatRequest):
+        """POST /api/web-chat-stream — stream text deltas and browser audio chunks."""
+        try:
+            text = normalize_chat_text(req.text)
+        except WebChatValidationError as exc:
+            message = str(exc)
+
+            async def _validation_error():
+                yield encode_stream_event("error", message=message)
+
+            return StreamingResponse(_validation_error(), media_type="application/x-ndjson")
+
+        device_id = (req.device_id or "web-client").strip() or "web-client"
+        return StreamingResponse(
+            self._web_chat_stream_events(text, device_id),
+            media_type="application/x-ndjson",
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+        )
+
+    async def _web_chat_stream_events(self, text: str, device_id: str):
+        event_queue: asyncio.Queue[bytes | None] = asyncio.Queue()
+        segment_queue: asyncio.Queue[str | None] = asyncio.Queue()
+        full_reply_parts: list[str] = []
+
+        async def _produce_text():
+            text_buf = ""
+            is_first_sentence = True
+            try:
+                if self._agent_stream_fn is None:
+                    reply = await self._agent_fn(text, device_id)
+                    for chunk in [str(reply or "")]:
+                        if not chunk:
+                            continue
+                        full_reply_parts.append(chunk)
+                        await event_queue.put(encode_stream_event("delta", text=chunk))
+                        text_buf += chunk
+                        segment, text_buf, is_first_sentence = pop_tts_segment(text_buf, is_first_sentence)
+                        if segment:
+                            cleaned = _clean_for_tts(segment)
+                            if cleaned:
+                                await segment_queue.put(cleaned)
+                else:
+                    async for chunk in self._agent_stream_fn(text, device_id):
+                        if not chunk:
+                            continue
+                        full_reply_parts.append(chunk)
+                        await event_queue.put(encode_stream_event("delta", text=chunk))
+                        text_buf += chunk
+                        while True:
+                            segment, text_buf, is_first_sentence = pop_tts_segment(
+                                text_buf, is_first_sentence
+                            )
+                            if not segment:
+                                break
+                            cleaned = _clean_for_tts(segment)
+                            if cleaned:
+                                await segment_queue.put(cleaned)
+
+                remaining = text_buf.strip()
+                if remaining:
+                    cleaned = _clean_for_tts(remaining)
+                    if cleaned:
+                        await segment_queue.put(cleaned)
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("/api/web-chat-stream: agent failed for device=%s", device_id)
+                await event_queue.put(encode_stream_event("error", message="agent failed"))
+            finally:
+                await segment_queue.put(None)
+
+        async def _produce_audio():
+            try:
+                while True:
+                    segment = await segment_queue.get()
+                    if segment is None:
+                        break
+                    if self._tts is None:
+                        await event_queue.put(encode_stream_event("audio_error", message="TTS not ready"))
+                        continue
+                    try:
+                        mime_type, audio_bytes = await self._tts.synthesize_browser_audio(segment)
+                        if audio_bytes:
+                            audio = build_success_response(
+                                device_id=device_id,
+                                reply=segment,
+                                audio_bytes=audio_bytes,
+                                mime_type=mime_type,
+                            )["audio"]
+                            await event_queue.put(encode_stream_event("audio", **audio))
+                        else:
+                            await event_queue.put(encode_stream_event("audio_error", message="TTS returned no audio"))
+                    except Exception:
+                        logger.exception("/api/web-chat-stream: TTS failed for device=%s", device_id)
+                        await event_queue.put(encode_stream_event("audio_error", message="TTS failed"))
+            except asyncio.CancelledError:
+                raise
+            finally:
+                reply = "".join(full_reply_parts).strip()
+                await event_queue.put(encode_stream_event("done", text=reply))
+                await event_queue.put(None)
+
+        producer_task = asyncio.create_task(_produce_text())
+        audio_task = asyncio.create_task(_produce_audio())
+
+        try:
+            yield encode_stream_event("start", device_id=device_id)
+            while True:
+                event = await event_queue.get()
+                if event is None:
+                    break
+                yield event
+        except asyncio.CancelledError:
+            producer_task.cancel()
+            audio_task.cancel()
+            raise
+        finally:
+            for task in (producer_task, audio_task):
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(producer_task, audio_task, return_exceptions=True)
 
     async def _ws_endpoint(self, ws: WebSocket):
         # Extract device headers (from query params or headers)

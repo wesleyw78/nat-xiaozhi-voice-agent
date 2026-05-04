@@ -18,6 +18,8 @@
           <input id="autoPlayToggle" type="checkbox" checked>
           <span>Auto play</span>
         </label>
+        <button id="voiceButton" class="secondary-button" type="button">Start voice</button>
+        <button id="interruptButton" class="secondary-button danger-button" type="button" disabled>Interrupt</button>
         <button id="replayButton" class="secondary-button" type="button" disabled>Replay</button>
       </div>
     </header>
@@ -33,6 +35,11 @@
         <strong>Ready.</strong>
         <span>Type a message to talk with Xiaozhi.</span>
       </div>
+    </section>
+
+    <section class="voice-row" aria-label="Voice status">
+      <div class="meter" aria-hidden="true"><span id="volumeMeter"></span></div>
+      <span id="voiceStatus">Voice idle.</span>
     </section>
 
     <form id="composerForm" class="composer">

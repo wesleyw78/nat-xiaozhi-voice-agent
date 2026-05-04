@@ -44,6 +44,7 @@ textarea {
 
 .topbar,
 .device-row,
+.voice-row,
 .composer {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -150,6 +151,33 @@ textarea:focus {
   box-shadow: var(--shadow);
 }
 
+.voice-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 220px) 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.meter {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e5eaf0;
+}
+
+.meter span {
+  display: block;
+  width: 0%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 80ms linear;
+}
+
 .empty-state {
   display: grid;
   place-items: center;
@@ -234,6 +262,14 @@ textarea:focus {
   border-color: var(--accent);
 }
 
+.danger-button {
+  color: var(--danger);
+}
+
+.danger-button:hover:not(:disabled) {
+  border-color: var(--danger);
+}
+
 button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
@@ -255,6 +291,7 @@ button:disabled {
   }
 
   .device-row,
+  .voice-row,
   .composer {
     grid-template-columns: 1fr;
   }
