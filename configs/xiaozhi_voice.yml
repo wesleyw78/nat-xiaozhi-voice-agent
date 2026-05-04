@@ -134,6 +134,12 @@ functions:
     sync_timeout: 120
     async_timeout: 600
 
+  line_matter_knowledge:
+    _type: line_matter_knowledge
+    knowledge_dir: "knowledge/line-matters-docx"
+    top_k: 3
+    max_chars: 900
+
   # get_weather and get_lunar require custom NAT function registration (Phase 2)
   # get_weather:
   #   _type: get_weather
@@ -152,6 +158,7 @@ functions:
       - current_datetime
       - wiki_search
       - web_search
+      - line_matter_knowledge
       - explain_scene
       - openclaw
     system_prompt: |
@@ -166,6 +173,7 @@ functions:
       [Tool routing]
       - Date/time questions → current_datetime
       - Weather, news, recommendations, health, anything you're unsure about → web_search
+      - Local line-matter service documents (殘聯/檔案/公安/經信/民政/人社/稅務/衛健/醫保/住建/總工會) → line_matter_knowledge
       - Describe what the camera sees → explain_scene
       - Knowledge/encyclopedia → wiki_search
       - Deep research, reports, send to WhatsApp/LINE → openclaw
@@ -182,5 +190,6 @@ workflow:
     - current_datetime
     - wiki_search
     - web_search
+    - line_matter_knowledge
     - explain_scene
     - openclaw
