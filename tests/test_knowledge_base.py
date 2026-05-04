@@ -6,7 +6,9 @@ from zipfile import ZipFile
 from nat_xiaozhi_voice.tools.knowledge_base import (
     build_chunks,
     extract_docx_blocks,
+    load_docx_chunks,
     search_chunks,
+    should_search_line_matter_knowledge,
 )
 
 
@@ -85,6 +87,31 @@ class KnowledgeBaseTests(unittest.TestCase):
         self.assertEqual(len(results), 1)
         self.assertEqual(results[0].source, "公安条线.docx")
         self.assertIn("申请条件", results[0].snippet)
+
+    def test_should_search_line_matter_knowledge_matches_service_queries(self):
+        self.assertTrue(should_search_line_matter_knowledge("居住证新办需要什么材料？"))
+        self.assertTrue(should_search_line_matter_knowledge("灵活就业扣款协议怎么办理"))
+        self.assertTrue(should_search_line_matter_knowledge("婚姻登记档案查询在哪里办"))
+
+    def test_should_search_line_matter_knowledge_matches_all_non_empty_queries(self):
+        self.assertTrue(should_search_line_matter_knowledge("今天天气怎么样？"))
+        self.assertTrue(should_search_line_matter_knowledge("帮我百科一下人工智能"))
+        self.assertFalse(should_search_line_matter_knowledge("   \n\t"))
+
+    def test_load_docx_chunks_skips_word_lock_files_and_invalid_docx(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _write_minimal_docx(
+                root / "公安条线.docx",
+                "<w:p><w:r><w:t>居住证新办</w:t></w:r></w:p>",
+            )
+            (root / "~$公安条线.docx").write_text("word lock file", encoding="utf-8")
+            (root / "损坏.docx").write_text("not a zip", encoding="utf-8")
+
+            chunks = load_docx_chunks(root)
+
+            self.assertEqual(len(chunks), 1)
+            self.assertEqual(chunks[0].source, "公安条线.docx")
 
 
 if __name__ == "__main__":

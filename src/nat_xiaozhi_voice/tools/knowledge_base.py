@@ -4,13 +4,79 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from zipfile import ZipFile
+from zipfile import BadZipFile, ZipFile
 import re
 import xml.etree.ElementTree as ET
 
 WORD_NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
 DEFAULT_KNOWLEDGE_DIR = Path("knowledge/line-matters-docx")
 DEFAULT_MAX_CHARS = 900
+
+LINE_MATTER_TERMS = (
+    "残联",
+    "殘聯",
+    "档案",
+    "檔案",
+    "公安",
+    "经信",
+    "經信",
+    "民政",
+    "人社",
+    "税务",
+    "稅務",
+    "卫健",
+    "衛健",
+    "医保",
+    "醫保",
+    "住建",
+    "总工会",
+    "總工會",
+    "居住证",
+    "居住證",
+    "失业登记",
+    "失業登記",
+    "社会保障卡",
+    "社會保障卡",
+    "灵活就业",
+    "靈活就業",
+    "扣款协议",
+    "扣款協議",
+    "退休住院计划",
+    "退休住院計畫",
+    "婚姻登记档案",
+    "婚姻登記檔案",
+    "住房租赁",
+    "住房租賃",
+    "计划生育",
+    "計劃生育",
+    "盲人公共交通证",
+    "盲人公共交通證",
+)
+
+SERVICE_QUERY_TERMS = (
+    "办理",
+    "辦理",
+    "申请",
+    "申請",
+    "申办",
+    "申辦",
+    "查询",
+    "查詢",
+    "材料",
+    "条件",
+    "條件",
+    "流程",
+    "程序",
+    "受理",
+    "事项",
+    "事項",
+    "主管部门",
+    "主管部門",
+    "哪里办",
+    "哪裡辦",
+    "怎么办",
+    "怎麼辦",
+)
 
 
 @dataclass(frozen=True)
@@ -86,7 +152,12 @@ def load_docx_chunks(knowledge_dir: Path | str = DEFAULT_KNOWLEDGE_DIR, max_char
     root = Path(knowledge_dir)
     chunks: list[KnowledgeChunk] = []
     for path in sorted(root.glob("*.docx")):
-        blocks = extract_docx_blocks(path)
+        if path.name.startswith("~$"):
+            continue
+        try:
+            blocks = extract_docx_blocks(path)
+        except (BadZipFile, KeyError, ET.ParseError):
+            continue
         chunks.extend(build_chunks(path.name, blocks, max_chars=max_chars))
     return chunks
 
@@ -128,6 +199,12 @@ def format_results(results: list[SearchResult]) -> str:
             f"{idx}. 來源：{item.source}；標題：{item.title}；內容：{item.snippet}"
         )
     return "\n".join(lines)
+
+
+def should_search_line_matter_knowledge(query: str) -> bool:
+    """Return True when a user query should consult the bundled knowledge base."""
+    text = _clean_text(query)
+    return bool(text)
 
 
 def _node_text(node: ET.Element) -> str:

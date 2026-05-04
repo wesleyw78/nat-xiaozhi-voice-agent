@@ -25,6 +25,7 @@ import asyncio
 import logging
 import os
 import typing
+import uuid
 
 import aiosqlite
 from pydantic import Field
@@ -76,6 +77,7 @@ async def voice_agent_workflow(config: VoiceAgentWorkflowConfig, builder: Builde
     from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
     from langgraph.graph import START, StateGraph
     from langgraph.prebuilt import ToolNode, tools_condition
+    from nat_xiaozhi_voice.tools.knowledge_base import should_search_line_matter_knowledge
 
     llm: BaseChatModel = await builder.get_llm(config.llm_name, wrapper_type=LLMFrameworkEnum.LANGCHAIN)
 
@@ -83,6 +85,7 @@ async def voice_agent_workflow(config: VoiceAgentWorkflowConfig, builder: Builde
     for name in config.tool_names:
         tool = await builder.get_tool(name, wrapper_type=LLMFrameworkEnum.LANGCHAIN)
         tools.append(tool)
+    knowledge_tool_enabled = "line_matter_knowledge" in config.tool_names
 
     # Disable reasoning/thinking mode to reduce first-token latency.
     # max_tokens caps reply length for voice-friendly output (~60 Chinese chars).
@@ -174,6 +177,43 @@ async def voice_agent_workflow(config: VoiceAgentWorkflowConfig, builder: Builde
 
         if len(messages) > MAX_HISTORY_MESSAGES:
             messages = messages[-MAX_HISTORY_MESSAGES:]
+
+        latest_human_index = -1
+        latest_user_text = ""
+        for idx in range(len(messages) - 1, -1, -1):
+            if isinstance(messages[idx], HumanMessage):
+                latest_human_index = idx
+                latest_user_text = str(getattr(messages[idx], "content", ""))
+                break
+
+        knowledge_used = False
+        if latest_human_index >= 0:
+            for msg in messages[latest_human_index + 1:]:
+                if type(msg).__name__ == "ToolMessage" and getattr(msg, "name", "") == "line_matter_knowledge":
+                    knowledge_used = True
+                    break
+
+        if (
+            knowledge_tool_enabled
+            and latest_user_text
+            and not knowledge_used
+            and should_search_line_matter_knowledge(latest_user_text)
+        ):
+            logger.info("Forcing line_matter_knowledge tool for query: %s", latest_user_text[:120])
+            return {
+                "messages": [
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {
+                                "name": "line_matter_knowledge",
+                                "args": {"query": latest_user_text},
+                                "id": f"line_matter_knowledge_{uuid.uuid4().hex}",
+                            }
+                        ],
+                    )
+                ]
+            }
 
         if summary and len(messages) > COMPRESS_THRESHOLD:
             recent = messages[-KEEP_RECENT:]

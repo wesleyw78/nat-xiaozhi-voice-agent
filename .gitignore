@@ -31,5 +31,8 @@ camera_snapshot.jpg
 .DS_Store
 Thumbs.db
 
+# Word temporary lock files
+~$*.docx
+
 # Environment variables
 .env
