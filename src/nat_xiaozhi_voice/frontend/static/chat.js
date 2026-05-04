@@ -13,9 +13,8 @@
   const voiceButton = document.getElementById("voiceButton");
   const interruptButton = document.getElementById("interruptButton");
 
-  const VOICE_START_THRESHOLD = 0.035;
-  const SILENCE_MS = 950;
-  const MIN_RECORDING_MS = 350;
+  const SILENCE_MS = 1350;
+  const MIN_RECORDING_MS = 650;
   const MAX_RECORDING_MS = 15000;
 
   let lastAudioUrl = null;
@@ -32,6 +31,7 @@
   let recordingStartedAt = 0;
   let lastVoiceAt = 0;
   let monitorFrame = null;
+  let voiceGate = null;
 
   function getDeviceId() {
     const stored = localStorage.getItem("xiaozhi-web-device-id");
@@ -96,6 +96,10 @@
       currentAudio = null;
     }
     audioQueue = [];
+  }
+
+  function isAssistantBusy() {
+    return Boolean(streamAbortController || currentAudio || audioQueue.length > 0);
   }
 
   function interruptCurrent(reason) {
@@ -301,9 +305,17 @@
     volumeMeter.style.width = Math.min(100, Math.round(rms * 420)) + "%";
 
     const now = performance.now();
-    if (rms > VOICE_START_THRESHOLD) {
+    if (!mediaRecorder && voiceGate) {
+      const gateState = voiceGate.update({ rms, now, isBusy: isAssistantBusy() });
+      if (gateState === "candidate") {
+        setVoiceStatus(isAssistantBusy() ? "Keep speaking to interrupt..." : "Voice detected...");
+      } else if (gateState === "start") {
+        startRecording();
+      } else if (!isAssistantBusy()) {
+        setVoiceStatus("Voice mode on. Start speaking.");
+      }
+    } else if (mediaRecorder && voiceGate && rms > voiceGate.getReleaseThreshold()) {
       lastVoiceAt = now;
-      if (!mediaRecorder) startRecording();
     } else if (
       mediaRecorder &&
       now - lastVoiceAt > SILENCE_MS &&
@@ -334,6 +346,7 @@
       analyser.fftSize = 1024;
       analyserBuffer = new Uint8Array(analyser.fftSize);
       source.connect(analyser);
+      voiceGate = window.XiaozhiVoiceGate.createVoiceGate();
       voiceEnabled = true;
       voiceButton.textContent = "Stop voice";
       setVoiceStatus("Voice mode on. Start speaking.");
@@ -355,6 +368,7 @@
     audioContext = null;
     analyser = null;
     analyserBuffer = null;
+    voiceGate = null;
     volumeMeter.style.width = "0%";
     voiceButton.textContent = "Start voice";
     setVoiceStatus("Voice idle.");
