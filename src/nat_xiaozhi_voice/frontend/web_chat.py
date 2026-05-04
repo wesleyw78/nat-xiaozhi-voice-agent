@@ -10,6 +10,7 @@ from typing import Any
 FIRST_SENTENCE_PUNCTS = frozenset("，,、。！？；：!?;:\n")
 NORMAL_SENTENCE_PUNCTS = frozenset("。！？!?\n")
 MAX_STREAM_SEGMENT_CHARS = 150
+FIRST_STREAM_SEGMENT_CHARS = 8
 
 
 class WebChatValidationError(ValueError):
@@ -80,6 +81,8 @@ def pop_tts_segment(text: str, is_first_sentence: bool) -> tuple[str | None, str
     boundary = _find_sentence_boundary(text, is_first_sentence)
     if boundary != -1:
         return text[: boundary + 1], text[boundary + 1 :], False
+    if is_first_sentence and len(text) >= FIRST_STREAM_SEGMENT_CHARS:
+        return text, "", False
     if len(text) > MAX_STREAM_SEGMENT_CHARS:
         return text, "", False
     return None, text, is_first_sentence

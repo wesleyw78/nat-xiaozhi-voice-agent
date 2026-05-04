@@ -70,6 +70,18 @@ class WebChatHelperTests(unittest.TestCase):
         self.assertEqual(remaining, "这是一段还没结束的话")
         self.assertFalse(is_first)
 
+    def test_pop_tts_segment_flushes_short_first_phrase_without_boundary(self):
+        segment, remaining, is_first = pop_tts_segment("abcdefgh", True)
+        self.assertEqual(segment, "abcdefgh")
+        self.assertEqual(remaining, "")
+        self.assertFalse(is_first)
+
+    def test_pop_tts_segment_waits_for_short_first_phrase_without_boundary(self):
+        segment, remaining, is_first = pop_tts_segment("abcdefg", True)
+        self.assertIsNone(segment)
+        self.assertEqual(remaining, "abcdefg")
+        self.assertTrue(is_first)
+
     def test_pop_tts_segment_flushes_long_text(self):
         text = "a" * 151
         segment, remaining, is_first = pop_tts_segment(text, True)

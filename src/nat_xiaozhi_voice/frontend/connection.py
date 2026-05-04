@@ -46,6 +46,7 @@ FIRST_SENTENCE_PUNCTS = frozenset("，,、。！？；：!?;:\n")
 NORMAL_SENTENCE_PUNCTS = frozenset("。！？!?\n")
 MAX_BUFFER_CHARS = 150
 FIRST_SENTENCE_MIN_CHARS = 2
+FIRST_STREAM_SEGMENT_CHARS = 8
 
 CLEAR_MEMORY_KEYWORDS = frozenset({
     "清除記憶", "清除记忆", "忘記我", "忘记我",
@@ -416,6 +417,12 @@ class ConnectionHandler:
                         text_buf = [remaining] if remaining else []
                         is_first_sentence = False
                         cleaned = _clean_for_tts(segment)
+                        if cleaned:
+                            await segment_queue.put(cleaned)
+                    elif is_first_sentence and len(buffered) >= FIRST_STREAM_SEGMENT_CHARS:
+                        text_buf = []
+                        is_first_sentence = False
+                        cleaned = _clean_for_tts(buffered)
                         if cleaned:
                             await segment_queue.put(cleaned)
                     elif len(buffered) > MAX_BUFFER_CHARS:
