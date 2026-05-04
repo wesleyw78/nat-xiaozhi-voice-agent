@@ -26,15 +26,13 @@ ENV PATH="/root/.local/bin:${PATH}"
 
 # ── Python dependencies (cached layer — only rebuilds when pyproject changes) ─
 COPY pyproject.toml ./
-RUN mkdir -p src/nat_xiaozhi_voice && \
+RUN printf 'torch==2.11.0+cu128\ntorchaudio==2.11.0+cu128\n' > /tmp/torch-cu128-constraints.txt && \
+    mkdir -p src/nat_xiaozhi_voice && \
     touch src/nat_xiaozhi_voice/__init__.py && \
-    uv pip install --system -e . && \
+    uv pip install --system -e . \
+        --extra-index-url https://download.pytorch.org/whl/cu128 \
+        --constraint /tmp/torch-cu128-constraints.txt && \
     rm -rf src/nat_xiaozhi_voice
-
-# ── Override PyTorch → CUDA 12.8 build ───────────────────────────────────────
-RUN uv pip install --system \
-        torch==2.11.0+cu128 torchaudio==2.11.0+cu128 \
-        --index-url https://download.pytorch.org/whl/cu128 --reinstall
 
 # ── Download models ──────────────────────────────────────────────────────────
 RUN mkdir -p models && \
@@ -49,7 +47,7 @@ COPY configs/ configs/
 COPY ./client/py-xiaozhi-ws.py test_vlm.py ./
 
 # ── Re-install in editable mode with actual source ───────────────────────────
-RUN uv pip install --system -e .
+RUN uv pip install --system -e . --no-deps
 
 # ── NAT timezone config ─────────────────────────────────────────────────────
 RUN mkdir -p /root/.config/nat && \
