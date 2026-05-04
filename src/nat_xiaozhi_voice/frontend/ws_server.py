@@ -184,7 +184,6 @@ class XiaozhiWSServer:
         app.add_api_route("/health", self._health, methods=["GET"])
         app.add_api_route("/chat", self._chat_page, methods=["GET"])
         app.add_api_route("/chat.css", self._chat_css, methods=["GET"])
-        app.add_api_route("/chat_voice_gate.js", self._chat_voice_gate_js, methods=["GET"])
         app.add_api_route("/chat.js", self._chat_js, methods=["GET"])
         app.add_api_route("/api/memory", self._list_memory, methods=["GET"])
         app.add_api_route("/api/memory", self._clear_all_memory, methods=["DELETE"])
@@ -267,9 +266,6 @@ class XiaozhiWSServer:
 
     async def _chat_js(self):
         return FileResponse(self._static_file("chat.js"), media_type="application/javascript")
-
-    async def _chat_voice_gate_js(self):
-        return FileResponse(self._static_file("chat_voice_gate.js"), media_type="application/javascript")
 
     async def _health(self):
         result = {

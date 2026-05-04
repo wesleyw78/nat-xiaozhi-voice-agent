@@ -13,25 +13,17 @@
   const voiceButton = document.getElementById("voiceButton");
   const interruptButton = document.getElementById("interruptButton");
 
-  const SILENCE_MS = 1350;
-  const MIN_RECORDING_MS = 650;
-  const MAX_RECORDING_MS = 15000;
-
   let lastAudioUrl = null;
   let currentAudio = null;
   let audioQueue = [];
   let streamAbortController = null;
-  let voiceEnabled = false;
   let micStream = null;
   let audioContext = null;
   let analyser = null;
   let analyserBuffer = null;
   let mediaRecorder = null;
   let recordedChunks = [];
-  let recordingStartedAt = 0;
-  let lastVoiceAt = 0;
   let monitorFrame = null;
-  let voiceGate = null;
 
   function getDeviceId() {
     const stored = localStorage.getItem("xiaozhi-web-device-id");
@@ -96,10 +88,6 @@
       currentAudio = null;
     }
     audioQueue = [];
-  }
-
-  function isAssistantBusy() {
-    return Boolean(streamAbortController || currentAudio || audioQueue.length > 0);
   }
 
   function interruptCurrent(reason) {
@@ -244,12 +232,49 @@
     return types.find((type) => MediaRecorder.isTypeSupported(type)) || "";
   }
 
-  function startRecording() {
-    if (!micStream || mediaRecorder) return;
+  async function prepareMicrophone() {
+    if (micStream && analyser && analyserBuffer) return true;
+    try {
+      micStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      audioContext = new AudioContext();
+      const source = audioContext.createMediaStreamSource(micStream);
+      analyser = audioContext.createAnalyser();
+      analyser.fftSize = 1024;
+      analyserBuffer = new Uint8Array(analyser.fftSize);
+      source.connect(analyser);
+      return true;
+    } catch (error) {
+      setVoiceStatus("Microphone permission denied or unavailable.");
+      setStatus("Microphone is unavailable.", "error");
+      return false;
+    }
+  }
+
+  function cleanupMicrophone() {
+    if (monitorFrame) cancelAnimationFrame(monitorFrame);
+    monitorFrame = null;
+    if (micStream) micStream.getTracks().forEach((track) => track.stop());
+    micStream = null;
+    if (audioContext) audioContext.close();
+    audioContext = null;
+    analyser = null;
+    analyserBuffer = null;
+    volumeMeter.style.width = "0%";
+  }
+
+  async function startRecording() {
+    if (mediaRecorder) return;
+    const ready = await prepareMicrophone();
+    if (!ready) return;
+
     interruptCurrent("Listening...");
     recordedChunks = [];
-    recordingStartedAt = performance.now();
-    lastVoiceAt = recordingStartedAt;
     const mimeType = getRecorderMimeType();
     mediaRecorder = new MediaRecorder(micStream, mimeType ? { mimeType } : undefined);
     mediaRecorder.ondataavailable = (event) => {
@@ -260,14 +285,24 @@
       mediaRecorder = null;
       const blob = new Blob(recordedChunks, { type: stoppedRecorder.mimeType || "audio/webm" });
       recordedChunks = [];
-      if (blob.size > 0) uploadRecording(blob);
+      cleanupMicrophone();
+      voiceButton.textContent = "Start voice";
+      if (blob.size > 0) {
+        uploadRecording(blob);
+      } else {
+        voiceButton.disabled = false;
+        setVoiceStatus("No audio recorded.");
+      }
     };
     mediaRecorder.start();
-    setVoiceStatus("Recording...");
+    voiceButton.textContent = "Send voice";
+    setVoiceStatus("Recording. Click again to send.");
+    monitorVolume();
   }
 
   function stopRecording() {
     if (!mediaRecorder || mediaRecorder.state === "inactive") return;
+    voiceButton.disabled = true;
     mediaRecorder.stop();
     setVoiceStatus("Recognizing...");
   }
@@ -283,18 +318,24 @@
       const data = await response.json();
       if (data.status !== "ok" || !data.text) {
         setVoiceStatus(data.message || "No speech recognized.");
+        voiceButton.disabled = false;
         return;
       }
       setVoiceStatus("Recognized: " + data.text);
+      voiceButton.disabled = false;
       sendMessage(data.text);
     } catch (error) {
       setVoiceStatus("ASR upload failed.");
       setStatus("Could not recognize microphone audio.", "error");
+      voiceButton.disabled = false;
     }
   }
 
   function monitorVolume() {
-    if (!voiceEnabled || !analyser) return;
+    if (!mediaRecorder || !analyser) {
+      volumeMeter.style.width = "0%";
+      return;
+    }
     analyser.getByteTimeDomainData(analyserBuffer);
     let sum = 0;
     for (let i = 0; i < analyserBuffer.length; i += 1) {
@@ -303,75 +344,7 @@
     }
     const rms = Math.sqrt(sum / analyserBuffer.length);
     volumeMeter.style.width = Math.min(100, Math.round(rms * 420)) + "%";
-
-    const now = performance.now();
-    if (!mediaRecorder && voiceGate) {
-      const gateState = voiceGate.update({ rms, now, isBusy: isAssistantBusy() });
-      if (gateState === "candidate") {
-        setVoiceStatus(isAssistantBusy() ? "Keep speaking to interrupt..." : "Voice detected...");
-      } else if (gateState === "start") {
-        startRecording();
-      } else if (!isAssistantBusy()) {
-        setVoiceStatus("Voice mode on. Start speaking.");
-      }
-    } else if (mediaRecorder && voiceGate && rms > voiceGate.getReleaseThreshold()) {
-      lastVoiceAt = now;
-    } else if (
-      mediaRecorder &&
-      now - lastVoiceAt > SILENCE_MS &&
-      now - recordingStartedAt > MIN_RECORDING_MS
-    ) {
-      stopRecording();
-    }
-
-    if (mediaRecorder && now - recordingStartedAt > MAX_RECORDING_MS) {
-      stopRecording();
-    }
     monitorFrame = requestAnimationFrame(monitorVolume);
-  }
-
-  async function startVoiceMode() {
-    if (voiceEnabled) return;
-    try {
-      micStream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
-      audioContext = new AudioContext();
-      const source = audioContext.createMediaStreamSource(micStream);
-      analyser = audioContext.createAnalyser();
-      analyser.fftSize = 1024;
-      analyserBuffer = new Uint8Array(analyser.fftSize);
-      source.connect(analyser);
-      voiceGate = window.XiaozhiVoiceGate.createVoiceGate();
-      voiceEnabled = true;
-      voiceButton.textContent = "Stop voice";
-      setVoiceStatus("Voice mode on. Start speaking.");
-      monitorVolume();
-    } catch (error) {
-      setVoiceStatus("Microphone permission denied or unavailable.");
-      setStatus("Microphone is unavailable.", "error");
-    }
-  }
-
-  function stopVoiceMode() {
-    voiceEnabled = false;
-    if (monitorFrame) cancelAnimationFrame(monitorFrame);
-    monitorFrame = null;
-    if (mediaRecorder) stopRecording();
-    if (micStream) micStream.getTracks().forEach((track) => track.stop());
-    micStream = null;
-    if (audioContext) audioContext.close();
-    audioContext = null;
-    analyser = null;
-    analyserBuffer = null;
-    voiceGate = null;
-    volumeMeter.style.width = "0%";
-    voiceButton.textContent = "Start voice";
-    setVoiceStatus("Voice idle.");
   }
 
   composerForm.addEventListener("submit", function (event) {
@@ -403,8 +376,8 @@
   });
 
   voiceButton.addEventListener("click", function () {
-    if (voiceEnabled) stopVoiceMode();
-    else startVoiceMode();
+    if (mediaRecorder) stopRecording();
+    else startRecording();
   });
 
   saveDeviceButton.addEventListener("click", function () {
