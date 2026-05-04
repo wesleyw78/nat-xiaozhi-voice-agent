@@ -37,10 +37,23 @@ RUN printf 'torch==2.11.0+cu128\ntorchaudio==2.11.0+cu128\n' > /tmp/torch-cu128-
 
 # ── Download models ──────────────────────────────────────────────────────────
 RUN mkdir -p models && \
-    git clone --depth 1 https://github.com/snakers4/silero-vad.git models/snakers4_silero-vad && \
-    python3 -c "\
-from huggingface_hub import snapshot_download; \
-snapshot_download('FunAudioLLM/SenseVoiceSmall', local_dir='models/SenseVoiceSmall')"
+    for attempt in 1 2 3 4 5; do \
+        git clone --depth 1 https://github.com/snakers4/silero-vad.git models/snakers4_silero-vad && break; \
+        status=$?; \
+        echo "silero-vad download failed on attempt $attempt; retrying in $((attempt * 10))s"; \
+        rm -rf models/snakers4_silero-vad; \
+        sleep $((attempt * 10)); \
+        if [ "$attempt" = "5" ]; then exit $status; fi; \
+    done && \
+    for attempt in 1 2 3 4 5; do \
+        python3 -c "from huggingface_hub import snapshot_download; snapshot_download('FunAudioLLM/SenseVoiceSmall', local_dir='models/SenseVoiceSmall')" && break; \
+        status=$?; \
+        echo "SenseVoiceSmall download failed on attempt $attempt; retrying in $((attempt * 20))s"; \
+        rm -rf models/SenseVoiceSmall/.cache; \
+        sleep $((attempt * 20)); \
+        if [ "$attempt" = "5" ]; then exit $status; fi; \
+    done && \
+    test -f models/SenseVoiceSmall/model.pt
 
 # ── Copy application source ─────────────────────────────────────────────────
 COPY src/ src/
