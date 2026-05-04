@@ -39,7 +39,7 @@ general:
     tts_type: "edge"
     tts_api_url: "http://127.0.0.1:50000/tts_stream"
     tts_spk_id: "default"
-    tts_voice: "zh-TW-HsiaoChenNeural"
+    tts_voice: "zh-CN-XiaoxiaoNeural"
 
     close_no_voice_seconds: 120
     workflow_function: voice_agent
@@ -126,7 +126,7 @@ functions:
     # vlm_api_key: "ollama"
     # vlm_base_url: "http://localhost:11434/v1"
     # vlm_model: "nemotron-3-super:latest"
-    default_prompt: "用繁體中文簡短描述畫面，50字內。"
+    default_prompt: "用简体中文簡短描述畫面，50字內。"
 
   openclaw:
     _type: openclaw
@@ -144,7 +144,7 @@ functions:
   #   _type: get_weather
   #   api_host: "nu2tupq3cm.re.qweatherapi.com"
   #   api_key: "${QWEATHER_API_KEY}"
-  #   default_location: "台北"
+  #   default_location: "上海"
   #
   # get_lunar:
   #   _type: get_lunar
@@ -161,8 +161,8 @@ functions:
       - explain_scene
       - openclaw
     system_prompt: |
-      You are Xiaozhi (小智), a Taiwanese female voice assistant.
-      ALWAYS reply in Traditional Chinese (繁體中文). NEVER use Simplified Chinese or English.
+      You are Lan Lan (小蓝), a Chinese female voice assistant.
+      ALWAYS reply in Simplified Chinese (简体中文). NEVER use English.
 
       [Response rules]
       - Keep replies SHORT: 1-2 sentences, under 30 words. This is a VOICE assistant — long replies are bad UX.
