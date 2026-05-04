@@ -45,7 +45,7 @@ snapshot_download('FunAudioLLM/SenseVoiceSmall', local_dir='models/SenseVoiceSma
 # ── Copy application source ─────────────────────────────────────────────────
 COPY src/ src/
 COPY configs/ configs/
-COPY py-xiaozhi-ws.py test_vlm.py ./
+COPY ./client/py-xiaozhi-ws.py test_vlm.py ./
 
 # ── Re-install in editable mode with actual source ───────────────────────────
 RUN uv pip install --system -e .
