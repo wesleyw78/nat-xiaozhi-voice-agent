@@ -78,3 +78,30 @@ test("voice and text entry are integrated in the composer", () => {
   const toolbar = html.slice(toolbarStart, toolbarEnd);
   assert.equal(toolbar.includes('id="voiceButton"'), false);
 });
+
+test("chat page hides device id controls and keeps header and composer fixed", () => {
+  const html = fs.readFileSync(
+    path.join(root, "src/nat_xiaozhi_voice/frontend/static/chat.html"),
+    "utf8",
+  );
+  const styles = fs.readFileSync(
+    path.join(root, "src/nat_xiaozhi_voice/frontend/static/chat.css"),
+    "utf8",
+  );
+  const script = fs.readFileSync(
+    path.join(root, "src/nat_xiaozhi_voice/frontend/static/chat.js"),
+    "utf8",
+  );
+
+  assert.equal(html.includes("device-row"), false);
+  assert.equal(html.includes("设备 ID"), false);
+  assert.equal(html.includes("saveDeviceButton"), false);
+  assert.equal(html.includes("deviceIdInput"), false);
+  assert.equal(script.includes("deviceIdInput"), false);
+  assert.equal(script.includes("saveDeviceButton"), false);
+
+  assert.match(styles, /\.app-shell\s*{[^}]*height:\s*100vh/s);
+  assert.match(styles, /\.topbar\s*{[^}]*position:\s*sticky/s);
+  assert.match(styles, /\.composer\s*{[^}]*position:\s*sticky/s);
+  assert.match(styles, /\.message-list\s*{[^}]*overflow-y:\s*auto/s);
+});

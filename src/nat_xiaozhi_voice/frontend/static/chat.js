@@ -8,8 +8,6 @@
   const sendButton = document.getElementById("sendButton");
   const replayButton = document.getElementById("replayButton");
   const autoPlayToggle = document.getElementById("autoPlayToggle");
-  const deviceIdInput = document.getElementById("deviceIdInput");
-  const saveDeviceButton = document.getElementById("saveDeviceButton");
   const voiceButton = document.getElementById("voiceButton");
   const interruptButton = document.getElementById("interruptButton");
 
@@ -24,6 +22,7 @@
   let mediaRecorder = null;
   let recordedChunks = [];
   let monitorFrame = null;
+  const deviceId = getDeviceId();
 
   function getDeviceId() {
     const stored = localStorage.getItem("xiaozhi-web-device-id");
@@ -181,7 +180,7 @@
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          device_id: deviceIdInput.value.trim() || "web-client",
+          device_id: deviceId,
           text: text,
         }),
         signal: streamAbortController.signal,
@@ -311,7 +310,6 @@
 
   async function uploadRecording(blob) {
     try {
-      const deviceId = deviceIdInput.value.trim() || "web-client";
       const response = await fetch("/api/web-asr?device_id=" + encodeURIComponent(deviceId), {
         method: "POST",
         headers: { "Content-Type": blob.type || "application/octet-stream" },
@@ -384,14 +382,6 @@
     else startRecording();
   });
 
-  saveDeviceButton.addEventListener("click", function () {
-    const value = deviceIdInput.value.trim() || "web-client";
-    deviceIdInput.value = value;
-    localStorage.setItem("xiaozhi-web-device-id", value);
-    setStatus("设备 ID 已保存。");
-  });
-
-  deviceIdInput.value = getDeviceId();
   refreshHealth();
   messageInput.focus();
 })();
