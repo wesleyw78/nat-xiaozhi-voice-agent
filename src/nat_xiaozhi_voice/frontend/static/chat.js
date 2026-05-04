@@ -57,7 +57,7 @@
 
     const meta = document.createElement("span");
     meta.className = "meta";
-    meta.textContent = role === "user" ? "我" : "小智";
+    meta.textContent = role === "user" ? "我" : "蓝蓝";
 
     const body = document.createElement("span");
     body.textContent = text || "";

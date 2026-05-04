@@ -31,11 +31,11 @@ test("chat page presents user-facing copy in Chinese", () => {
     "utf8",
   );
 
-  assert.equal(html.includes("<title>小智语音对话</title>"), true);
+  assert.equal(html.includes("<title>蓝蓝语音对话</title>"), true);
   assert.equal(html.includes(">自动播放<"), true);
   assert.equal(html.includes(">开始说话<"), true);
   assert.equal(html.includes(">发送文字<"), true);
-  assert.equal(script.includes('role === "user" ? "我" : "小智"'), true);
+  assert.equal(script.includes('role === "user" ? "我" : "蓝蓝"'), true);
   assert.equal(script.includes("服务已连接。"), true);
 
   for (const oldText of [
