@@ -405,6 +405,11 @@ class ConnectionHandler:
                     text_buf.append(chunk)
 
                     buffered = "".join(text_buf)
+                    if is_first_sentence:
+                        buffered = buffered.lstrip()
+                        text_buf = [buffered] if buffered else []
+                        if not buffered:
+                            continue
 
                     if is_first_sentence and len(buffered) >= FIRST_SENTENCE_MIN_CHARS:
                         boundary = self._find_sentence_boundary(buffered, True)

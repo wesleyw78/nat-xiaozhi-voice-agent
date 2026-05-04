@@ -78,6 +78,11 @@ def _find_sentence_boundary(text: str, is_first_sentence: bool) -> int:
 
 def pop_tts_segment(text: str, is_first_sentence: bool) -> tuple[str | None, str, bool]:
     """Pop one TTS segment from buffered streamed text when a boundary is ready."""
+    if is_first_sentence:
+        text = text.lstrip()
+        if not text:
+            return None, "", True
+
     boundary = _find_sentence_boundary(text, is_first_sentence)
     if boundary != -1:
         return text[: boundary + 1], text[boundary + 1 :], False

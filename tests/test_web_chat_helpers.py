@@ -64,6 +64,18 @@ class WebChatHelperTests(unittest.TestCase):
         self.assertEqual(remaining, "今天很高兴")
         self.assertFalse(is_first)
 
+    def test_pop_tts_segment_ignores_leading_newline_before_first_phrase(self):
+        segment, remaining, is_first = pop_tts_segment("\n你好，根据材料", True)
+        self.assertEqual(segment, "你好，")
+        self.assertEqual(remaining, "根据材料")
+        self.assertFalse(is_first)
+
+    def test_pop_tts_segment_drops_only_leading_whitespace(self):
+        segment, remaining, is_first = pop_tts_segment("\n  ", True)
+        self.assertIsNone(segment)
+        self.assertEqual(remaining, "")
+        self.assertTrue(is_first)
+
     def test_pop_tts_segment_waits_without_boundary(self):
         segment, remaining, is_first = pop_tts_segment("这是一段还没结束的话", False)
         self.assertIsNone(segment)
