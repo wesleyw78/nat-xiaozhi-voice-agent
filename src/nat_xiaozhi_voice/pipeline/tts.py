@@ -8,6 +8,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import wave
+from io import BytesIO
 from typing import Callable
 
 import aiohttp
@@ -130,6 +132,41 @@ class CosyVoiceTTS:
         finally:
             encoder.close()
 
+    async def synthesize_browser_audio(
+        self,
+        text: str,
+        sample_rate: int = 24000,
+    ) -> tuple[str, bytes]:
+        """Return browser-playable WAV audio for the given text."""
+        text = _clean_for_tts(text)
+        if not text:
+            return "audio/wav", b""
+
+        payload = {
+            "text": text,
+            "spk_id": self.spk_id,
+            "stream": True,
+            "target_sr": sample_rate,
+        }
+        timeout = aiohttp.ClientTimeout(total=30, sock_read=15)
+        pcm_buf = bytearray()
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.post(self.api_url, json=payload) as resp:
+                if resp.status != 200:
+                    body = await resp.text()
+                    raise RuntimeError(f"CosyVoice API {resp.status}: {body[:200]}")
+                async for chunk in resp.content.iter_any():
+                    if chunk:
+                        pcm_buf.extend(chunk)
+
+        wav = BytesIO()
+        with wave.open(wav, "wb") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(sample_rate)
+            wav_file.writeframes(bytes(pcm_buf))
+        return "audio/wav", wav.getvalue()
+
 
 class EdgeTTS:
     """Microsoft Edge TTS — free cloud service, no API key required."""
@@ -153,21 +190,13 @@ class EdgeTTS:
             return
 
         try:
-            import edge_tts
             import miniaudio
 
-            logger.info("EdgeTTS: calling Microsoft TTS for %d chars...", len(text))
-            communicate = edge_tts.Communicate(text, self.voice)
-            mp3_chunks: list[bytes] = []
-            async for chunk in communicate.stream():
-                if chunk["type"] == "audio":
-                    mp3_chunks.append(chunk["data"])
-
-            if not mp3_chunks:
+            mime_type, mp3_data = await self.synthesize_browser_audio(text)
+            if mime_type != "audio/mpeg" or not mp3_data:
                 logger.warning("EdgeTTS returned no audio for %d chars", len(text))
                 return
 
-            mp3_data = b"".join(mp3_chunks)
             decoded = await asyncio.to_thread(
                 miniaudio.decode, mp3_data,
                 nchannels=1,
@@ -186,3 +215,24 @@ class EdgeTTS:
             raise
         except Exception:
             logger.exception("EdgeTTS error for text=%s", text[:40])
+
+    async def synthesize_browser_audio(
+        self,
+        text: str,
+        sample_rate: int = 24000,
+    ) -> tuple[str, bytes]:
+        """Return browser-playable MP3 audio for the given text."""
+        text = _clean_for_tts(text)
+        if not text:
+            return "audio/mpeg", b""
+
+        import edge_tts
+
+        logger.info("EdgeTTS: calling Microsoft TTS for %d chars...", len(text))
+        communicate = edge_tts.Communicate(text, self.voice)
+        mp3_chunks: list[bytes] = []
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                mp3_chunks.append(chunk["data"])
+
+        return "audio/mpeg", b"".join(mp3_chunks)

@@ -15,15 +15,23 @@ import asyncio
 import json
 import logging
 import uuid
+from pathlib import Path
 from typing import TYPE_CHECKING, Awaitable, Callable, Optional
 
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from nat_xiaozhi_voice.frontend.config import XiaozhiVoiceFrontEndConfig
 from nat_xiaozhi_voice.frontend.connection import ConnectionHandler
+from nat_xiaozhi_voice.frontend.web_chat import (
+    WebChatValidationError,
+    build_error_response,
+    build_success_response,
+    normalize_chat_text,
+)
 from nat_xiaozhi_voice.pipeline.asr import FunASRRecognizer
 from nat_xiaozhi_voice.pipeline.tts import CosyVoiceTTS, EdgeTTS
 from nat_xiaozhi_voice.pipeline.vad import SileroVAD
@@ -109,6 +117,11 @@ class SpeakRequest(BaseModel):
     device_id: str = ""
 
 
+class WebChatRequest(BaseModel):
+    text: str
+    device_id: str = "web-client"
+
+
 class XiaozhiWSServer:
     """Manages the FastAPI app, pipeline singletons, and active connections."""
 
@@ -165,11 +178,15 @@ class XiaozhiWSServer:
         app.add_event_handler("startup", self._startup)
         app.add_event_handler("shutdown", self._shutdown)
         app.add_api_route("/health", self._health, methods=["GET"])
+        app.add_api_route("/chat", self._chat_page, methods=["GET"])
+        app.add_api_route("/chat.css", self._chat_css, methods=["GET"])
+        app.add_api_route("/chat.js", self._chat_js, methods=["GET"])
         app.add_api_route("/api/memory", self._list_memory, methods=["GET"])
         app.add_api_route("/api/memory", self._clear_all_memory, methods=["DELETE"])
         app.add_api_route("/api/memory/{device_id:path}", self._clear_device_memory, methods=["DELETE"])
 
         app.add_api_route("/api/speak", self._speak, methods=["POST"])
+        app.add_api_route("/api/web-chat", self._web_chat, methods=["POST"])
 
         # Proxy-friendly routes (no /api/ prefix) for NAT UI access
         app.add_api_route("/memory", self._list_memory, methods=["GET"])
@@ -230,6 +247,19 @@ class XiaozhiWSServer:
             logger.warning("LLM warm-up failed (non-critical): %s", e)
 
     # ── routes ─────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _static_file(name: str) -> Path:
+        return Path(__file__).with_name("static") / name
+
+    async def _chat_page(self):
+        return FileResponse(self._static_file("chat.html"))
+
+    async def _chat_css(self):
+        return FileResponse(self._static_file("chat.css"), media_type="text/css")
+
+    async def _chat_js(self):
+        return FileResponse(self._static_file("chat.js"), media_type="application/javascript")
 
     async def _health(self):
         result = {
@@ -360,6 +390,62 @@ class XiaozhiWSServer:
 
         logger.info("/api/speak: pushing to %d client(s): %s", len(targets), req.text[:60])
         return {"status": "ok", "targets": len(targets)}
+
+    async def _web_chat(self, req: WebChatRequest):
+        """POST /api/web-chat — browser-friendly text chat with playable audio."""
+        try:
+            text = normalize_chat_text(req.text)
+        except WebChatValidationError as exc:
+            return build_error_response(str(exc))
+
+        device_id = (req.device_id or "web-client").strip() or "web-client"
+
+        try:
+            reply = await self._agent_fn(text, device_id)
+        except Exception:
+            logger.exception("/api/web-chat: agent failed for device=%s", device_id)
+            return build_error_response("agent failed")
+
+        reply = str(reply or "").strip()
+        if not reply:
+            return build_error_response("reply is empty")
+
+        if self._tts is None:
+            return build_success_response(
+                device_id=device_id,
+                reply=reply,
+                audio_bytes=None,
+                mime_type=None,
+                error="TTS not ready",
+            )
+
+        try:
+            mime_type, audio_bytes = await self._tts.synthesize_browser_audio(reply)
+        except Exception:
+            logger.exception("/api/web-chat: TTS failed for device=%s", device_id)
+            return build_success_response(
+                device_id=device_id,
+                reply=reply,
+                audio_bytes=None,
+                mime_type=None,
+                error="TTS failed",
+            )
+
+        if not audio_bytes:
+            return build_success_response(
+                device_id=device_id,
+                reply=reply,
+                audio_bytes=None,
+                mime_type=None,
+                error="TTS returned no audio",
+            )
+
+        return build_success_response(
+            device_id=device_id,
+            reply=reply,
+            audio_bytes=audio_bytes,
+            mime_type=mime_type,
+        )
 
     async def _ws_endpoint(self, ws: WebSocket):
         # Extract device headers (from query params or headers)

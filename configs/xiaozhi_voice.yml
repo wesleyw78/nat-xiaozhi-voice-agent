@@ -67,7 +67,7 @@ llms:
   # vLLM serve 指令見 scripts/start-nano-omni.sh 或 spark-vllm-docker recipe
   main_llm:
     _type: openai
-    base_url: "http://localhost:8880/v1"
+    base_url: "http://172.16.1.120:8880/v1"
     model_name: "nemotron"
     api_key: "not-needed"
     temperature: 0.3
@@ -116,7 +116,7 @@ functions:
     # remote_camera_url: "http://172.29.107.223:9903"  # only needed if relay_enabled: false
     # --- 方案 C：Nemotron-3-Nano-Omni（當前啟用，與 main_llm 共用同一模型）---
     vlm_api_key: "not-needed"
-    vlm_base_url: "http://localhost:8880/v1"
+    vlm_base_url: "http://172.16.1.120:8880/v1"
     vlm_model: "nemotron"
     # --- 方案 B：vLLM + Gemma4 E2B ---
     # vlm_api_key: "not-needed"

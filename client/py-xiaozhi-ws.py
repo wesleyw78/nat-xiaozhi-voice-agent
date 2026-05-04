@@ -309,7 +309,7 @@ async def ws_main():
 
     # websockets >=14 renamed extra_headers → additional_headers
     ws_kwargs = dict(ping_interval=30, ping_timeout=120)
-    if hasattr(websockets, 'version') and int(websockets.version.split('.')[0]) >= 14:
+    if int(websockets.__version__.split('.')[0]) >= 14:
         ws_kwargs['additional_headers'] = headers
     else:
         ws_kwargs['extra_headers'] = headers

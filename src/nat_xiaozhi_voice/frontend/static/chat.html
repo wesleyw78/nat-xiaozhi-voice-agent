@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Xiaozhi Web Chat</title>
+  <link rel="stylesheet" href="/chat.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <h1>Xiaozhi Web Chat</h1>
+        <p id="statusText" class="status-text">Checking service...</p>
+      </div>
+      <div class="toolbar" aria-label="Chat controls">
+        <label class="toggle">
+          <input id="autoPlayToggle" type="checkbox" checked>
+          <span>Auto play</span>
+        </label>
+        <button id="replayButton" class="secondary-button" type="button" disabled>Replay</button>
+      </div>
+    </header>
+
+    <section class="device-row" aria-label="Device settings">
+      <label for="deviceIdInput">Device ID</label>
+      <input id="deviceIdInput" class="device-input" type="text" spellcheck="false">
+      <button id="saveDeviceButton" class="secondary-button" type="button">Save</button>
+    </section>
+
+    <section id="messageList" class="message-list" aria-live="polite" aria-label="Conversation">
+      <div class="empty-state">
+        <strong>Ready.</strong>
+        <span>Type a message to talk with Xiaozhi.</span>
+      </div>
+    </section>
+
+    <form id="composerForm" class="composer">
+      <textarea id="messageInput" rows="2" placeholder="Type a message..." autocomplete="off"></textarea>
+      <button id="sendButton" class="primary-button" type="submit">Send</button>
+    </form>
+  </main>
+
+  <script src="/chat.js"></script>
+</body>
+</html>
