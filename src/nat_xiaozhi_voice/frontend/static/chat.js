@@ -287,6 +287,7 @@
       recordedChunks = [];
       cleanupMicrophone();
       voiceButton.textContent = "开始说话";
+      voiceButton.classList.remove("recording");
       if (blob.size > 0) {
         uploadRecording(blob);
       } else {
@@ -296,6 +297,7 @@
     };
     mediaRecorder.start();
     voiceButton.textContent = "发送语音";
+    voiceButton.classList.add("recording");
     setVoiceStatus("正在录音，请再次点击发送。");
     monitorVolume();
   }
@@ -319,6 +321,7 @@
       if (data.status !== "ok" || !data.text) {
         setVoiceStatus(data.message || "未识别到语音。");
         voiceButton.disabled = false;
+        voiceButton.classList.remove("recording");
         return;
       }
       setVoiceStatus("已识别：" + data.text);
@@ -328,6 +331,7 @@
       setVoiceStatus("语音上传失败。");
       setStatus("无法识别麦克风语音。", "error");
       voiceButton.disabled = false;
+      voiceButton.classList.remove("recording");
     }
   }
 

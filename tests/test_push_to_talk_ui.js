@@ -34,7 +34,7 @@ test("chat page presents user-facing copy in Chinese", () => {
   assert.equal(html.includes("<title>小智语音对话</title>"), true);
   assert.equal(html.includes(">自动播放<"), true);
   assert.equal(html.includes(">开始说话<"), true);
-  assert.equal(html.includes(">发送<"), true);
+  assert.equal(html.includes(">发送文字<"), true);
   assert.equal(script.includes('role === "user" ? "我" : "小智"'), true);
   assert.equal(script.includes("服务已连接。"), true);
 
@@ -51,4 +51,30 @@ test("chat page presents user-facing copy in Chinese", () => {
   ]) {
     assert.equal(html.includes(oldText) || script.includes(oldText), false, oldText);
   }
+});
+
+test("voice and text entry are integrated in the composer", () => {
+  const html = fs.readFileSync(
+    path.join(root, "src/nat_xiaozhi_voice/frontend/static/chat.html"),
+    "utf8",
+  );
+
+  assert.equal(html.includes('class="composer-status"'), true);
+  assert.equal(html.includes('class="composer-main"'), true);
+  assert.equal(html.includes('class="composer-actions"'), true);
+  assert.equal(html.includes('<section class="voice-row"'), false);
+
+  const composerStart = html.indexOf('<form id="composerForm"');
+  const composerEnd = html.indexOf("</form>", composerStart);
+  const composer = html.slice(composerStart, composerEnd);
+  assert.equal(composer.includes('id="messageInput"'), true);
+  assert.equal(composer.includes('id="voiceButton"'), true);
+  assert.equal(composer.includes('id="sendButton"'), true);
+  assert.equal(composer.includes('id="voiceStatus"'), true);
+  assert.equal(composer.includes('id="volumeMeter"'), true);
+
+  const toolbarStart = html.indexOf('class="toolbar"');
+  const toolbarEnd = html.indexOf("</div>", toolbarStart);
+  const toolbar = html.slice(toolbarStart, toolbarEnd);
+  assert.equal(toolbar.includes('id="voiceButton"'), false);
 });

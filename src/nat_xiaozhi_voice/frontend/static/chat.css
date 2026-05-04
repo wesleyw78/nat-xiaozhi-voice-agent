@@ -44,7 +44,6 @@ textarea {
 
 .topbar,
 .device-row,
-.voice-row,
 .composer {
   background: var(--panel);
   border: 1px solid var(--line);
@@ -151,19 +150,9 @@ textarea:focus {
   box-shadow: var(--shadow);
 }
 
-.voice-row {
-  display: grid;
-  grid-template-columns: minmax(120px, 220px) 1fr;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
-  border-radius: 8px;
-  color: var(--muted);
-  font-size: 14px;
-}
-
 .meter {
-  height: 10px;
+  width: 120px;
+  height: 8px;
   overflow: hidden;
   border-radius: 999px;
   background: #e5eaf0;
@@ -224,15 +213,38 @@ textarea:focus {
 
 .composer {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 96px;
-  gap: 10px;
-  align-items: end;
-  padding: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: stretch;
+  padding: 10px;
   border-radius: 8px;
 }
 
+.composer-main {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.composer-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.composer-actions {
+  display: grid;
+  grid-template-columns: 104px 104px;
+  gap: 8px;
+  align-items: stretch;
+}
+
 .primary-button,
-.secondary-button {
+.secondary-button,
+.voice-button {
   border: 1px solid transparent;
   border-radius: 6px;
   cursor: pointer;
@@ -242,10 +254,27 @@ textarea:focus {
 }
 
 .primary-button {
-  height: 52px;
   background: var(--accent);
   color: #ffffff;
   font-weight: 700;
+}
+
+.voice-button {
+  background: #f8faf9;
+  color: var(--accent-strong);
+  border-color: rgba(39, 103, 73, 0.28);
+  font-weight: 700;
+}
+
+.voice-button:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: #eef6f1;
+}
+
+.voice-button.recording {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #ffffff;
 }
 
 .primary-button:hover:not(:disabled) {
@@ -291,12 +320,16 @@ button:disabled {
   }
 
   .device-row,
-  .voice-row,
   .composer {
     grid-template-columns: 1fr;
   }
 
-  .primary-button {
+  .composer-actions {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .primary-button,
+  .voice-button {
     width: 100%;
   }
 
