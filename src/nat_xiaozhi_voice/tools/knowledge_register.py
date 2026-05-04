@@ -13,10 +13,13 @@ from nat.cli.register_workflow import register_function
 from nat.data_models.function import FunctionBaseConfig
 
 from nat_xiaozhi_voice.tools.knowledge_base import (
-    DEFAULT_KNOWLEDGE_DIR,
-    format_results,
-    load_docx_chunks,
-    search_chunks,
+    should_search_line_matter_knowledge,
+)
+from nat_xiaozhi_voice.tools.knowledge_qa import (
+    format_qa_results,
+    load_qa_entries,
+    search_qa_entries,
+    summarize_qa_results_for_log,
 )
 
 logger = logging.getLogger(__name__)
@@ -25,22 +28,19 @@ logger = logging.getLogger(__name__)
 class LineMatterKnowledgeConfig(FunctionBaseConfig, name="line_matter_knowledge"):
     """Config for the local line-matter DOCX knowledge tool."""
 
-    knowledge_dir: str = Field(default=str(DEFAULT_KNOWLEDGE_DIR))
+    qa_path: str = Field(default="knowledge/line-matters-qa/qa.jsonl")
     top_k: int = Field(default=3)
-    max_chars: int = Field(default=900)
 
 
 @register_function(config_type=LineMatterKnowledgeConfig)
 async def line_matter_knowledge_tool(config: LineMatterKnowledgeConfig, builder: Builder):
-    knowledge_dir = Path(config.knowledge_dir)
-    chunks = load_docx_chunks(knowledge_dir, max_chars=config.max_chars)
-    doc_count = len([path for path in knowledge_dir.glob("*.docx") if not path.name.startswith("~$")])
+    qa_path = Path(config.qa_path)
+    qa_entries = load_qa_entries(qa_path) if qa_path.exists() else []
 
     logger.info(
-        "line_matter_knowledge registered (dir=%s, docs=%d, chunks=%d)",
-        knowledge_dir,
-        doc_count,
-        len(chunks),
+        "line_matter_knowledge registered (qa_path=%s, qa=%d)",
+        qa_path,
+        len(qa_entries),
     )
 
     async def line_matter_knowledge(query: str = "") -> str:
@@ -55,8 +55,20 @@ async def line_matter_knowledge_tool(config: LineMatterKnowledgeConfig, builder:
         """
         if not query or not query.strip():
             return "請提供要查詢的條線事項問題。"
-        results = search_chunks(query, chunks, top_k=config.top_k)
-        return format_results(results)
+        if not qa_entries:
+            return "本地問答知識庫尚未生成，請先生成 qa.jsonl。"
+        if not should_search_line_matter_knowledge(query):
+            return "請提供要查詢的問題。"
+        results = search_qa_entries(query, qa_entries, top_k=config.top_k)
+        formatted = format_qa_results(results)
+        logger.info(
+            "line_matter_knowledge result | query=%s | matches=%d | returned=%s",
+            query.strip()[:200],
+            len(results),
+            summarize_qa_results_for_log(results),
+        )
+        logger.info("line_matter_knowledge returned content:\n%s", formatted)
+        return formatted
 
     yield FunctionInfo.from_fn(
         line_matter_knowledge,

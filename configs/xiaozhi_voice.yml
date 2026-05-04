@@ -136,9 +136,8 @@ functions:
 
   line_matter_knowledge:
     _type: line_matter_knowledge
-    knowledge_dir: "knowledge/line-matters-docx"
+    qa_path: "knowledge/line-matters-qa/qa.jsonl"
     top_k: 3
-    max_chars: 900
 
   # get_weather and get_lunar require custom NAT function registration (Phase 2)
   # get_weather:

@@ -117,10 +117,12 @@ async def register_xiaozhi_voice_front_end(
                 # Tool result logging
                 msg_type = type(msg).__name__
                 if msg_type == "ToolMessage":
+                    tool_content = str(getattr(msg, "content", ""))
                     logger.info(
-                        "Tool DONE: %s | output=%d chars",
+                        "Tool DONE: %s | output=%d chars | content=%s",
                         getattr(msg, "name", "unknown"),
-                        len(str(getattr(msg, "content", ""))),
+                        len(tool_content),
+                        tool_content[:1000],
                     )
                     continue
 

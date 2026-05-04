@@ -1,0 +1,75 @@
+{
+  "doc_count": 11,
+  "documents": [
+    {
+      "blocks": 1163,
+      "items": 21,
+      "line_name": "人社",
+      "source_file": "人社.docx"
+    },
+    {
+      "blocks": 181,
+      "items": 4,
+      "line_name": "住建",
+      "source_file": "住建.docx"
+    },
+    {
+      "blocks": 331,
+      "items": 19,
+      "line_name": "公安",
+      "source_file": "公安条线.docx"
+    },
+    {
+      "blocks": 428,
+      "items": 22,
+      "line_name": "医保",
+      "source_file": "医保.docx"
+    },
+    {
+      "blocks": 199,
+      "items": 8,
+      "line_name": "卫健",
+      "source_file": "卫健.docx"
+    },
+    {
+      "blocks": 239,
+      "items": 10,
+      "line_name": "总工会",
+      "source_file": "总工会.docx"
+    },
+    {
+      "blocks": 438,
+      "items": 25,
+      "line_name": "档案",
+      "source_file": "档案条线.docx"
+    },
+    {
+      "blocks": 679,
+      "items": 30,
+      "line_name": "残联",
+      "source_file": "残联条线.docx"
+    },
+    {
+      "blocks": 224,
+      "items": 12,
+      "line_name": "民政",
+      "source_file": "民政条线.docx"
+    },
+    {
+      "blocks": 112,
+      "items": 8,
+      "line_name": "税务",
+      "source_file": "税务.docx"
+    },
+    {
+      "blocks": 14,
+      "items": 1,
+      "line_name": "经信",
+      "source_file": "经信条线.docx"
+    }
+  ],
+  "item_count": 160,
+  "output_dir": "knowledge\\line-matters-qa",
+  "qa_count": 2305,
+  "source_dir": "knowledge\\line-matters-docx"
+}
