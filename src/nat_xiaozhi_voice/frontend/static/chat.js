@@ -58,7 +58,7 @@
 
     const meta = document.createElement("span");
     meta.className = "meta";
-    meta.textContent = role === "user" ? "You" : "Xiaozhi";
+    meta.textContent = role === "user" ? "我" : "小智";
 
     const body = document.createElement("span");
     body.textContent = text || "";
@@ -104,23 +104,23 @@
     if (currentAudio || audioQueue.length === 0 || !autoPlayToggle.checked) return;
     const url = audioQueue.shift();
     currentAudio = new Audio(url);
-    currentAudio.onplay = () => setStatus("Playing reply audio...");
+    currentAudio.onplay = () => setStatus("正在播放回复语音...");
     currentAudio.onended = () => {
       currentAudio = null;
       if (audioQueue.length > 0) playNextAudio();
       else {
         interruptButton.disabled = streamAbortController === null;
-        setStatus("Ready.");
+        setStatus("准备好了。");
       }
     };
     currentAudio.onerror = () => {
       currentAudio = null;
-      setStatus("Audio playback failed. Press Replay or check browser audio.", "warning");
+      setStatus("语音播放失败。请点击重播，或检查浏览器声音设置。", "warning");
       playNextAudio();
     };
     currentAudio.play().catch(() => {
       currentAudio = null;
-      setStatus("Browser blocked autoplay. Press Replay to listen.", "warning");
+      setStatus("浏览器阻止了自动播放，请点击重播收听。", "warning");
     });
   }
 
@@ -138,11 +138,11 @@
       const response = await fetch("/health");
       if (!response.ok) throw new Error("health request failed");
       const data = await response.json();
-      const ttsState = data.pipeline && data.pipeline.tts ? "TTS ready" : "TTS not ready";
-      const asrState = data.pipeline && data.pipeline.asr ? "ASR ready" : "ASR not ready";
-      setStatus("Service online. " + asrState + ", " + ttsState + ".");
+      const ttsState = data.pipeline && data.pipeline.tts ? "语音合成就绪" : "语音合成未就绪";
+      const asrState = data.pipeline && data.pipeline.asr ? "语音识别就绪" : "语音识别未就绪";
+      setStatus("服务已连接。" + asrState + "，" + ttsState + "。");
     } catch (error) {
-      setStatus("Service health check failed.", "error");
+      setStatus("服务健康检查失败。", "error");
     }
   }
 
@@ -174,7 +174,7 @@
     sendButton.disabled = true;
     interruptButton.disabled = false;
     streamAbortController = new AbortController();
-    setStatus("Thinking...");
+    setStatus("正在思考...");
 
     try {
       const response = await fetch("/api/web-chat-stream", {
@@ -190,7 +190,7 @@
 
       await readNdjson(response, (event) => {
         if (event.type === "start") {
-          setStatus("Streaming reply...");
+          setStatus("正在流式回复...");
         } else if (event.type === "delta") {
           assistantText += event.text || "";
           assistantBody.textContent = assistantText;
@@ -198,20 +198,20 @@
         } else if (event.type === "audio") {
           enqueueAudio(event);
         } else if (event.type === "audio_error") {
-          setStatus(event.message || "Audio generation failed.", "warning");
+          setStatus(event.message || "语音生成失败。", "warning");
         } else if (event.type === "done") {
           if (event.text) {
             assistantText = event.text;
             assistantBody.textContent = assistantText;
           }
-          setStatus(audioQueue.length > 0 || currentAudio ? "Playing reply audio..." : "Ready.");
+          setStatus(audioQueue.length > 0 || currentAudio ? "正在播放回复语音..." : "准备好了。");
         } else if (event.type === "error") {
-          setStatus(event.message || "Chat stream failed.", "error");
+          setStatus(event.message || "对话流失败。", "error");
         }
       });
     } catch (error) {
       if (error.name !== "AbortError") {
-        setStatus("Network error while streaming reply.", "error");
+        setStatus("流式回复时发生网络错误。", "error");
       }
     } finally {
       streamAbortController = null;
@@ -250,8 +250,8 @@
       source.connect(analyser);
       return true;
     } catch (error) {
-      setVoiceStatus("Microphone permission denied or unavailable.");
-      setStatus("Microphone is unavailable.", "error");
+      setVoiceStatus("麦克风权限被拒绝或不可用。");
+      setStatus("麦克风不可用。", "error");
       return false;
     }
   }
@@ -273,7 +273,7 @@
     const ready = await prepareMicrophone();
     if (!ready) return;
 
-    interruptCurrent("Listening...");
+    interruptCurrent("正在听...");
     recordedChunks = [];
     const mimeType = getRecorderMimeType();
     mediaRecorder = new MediaRecorder(micStream, mimeType ? { mimeType } : undefined);
@@ -286,17 +286,17 @@
       const blob = new Blob(recordedChunks, { type: stoppedRecorder.mimeType || "audio/webm" });
       recordedChunks = [];
       cleanupMicrophone();
-      voiceButton.textContent = "Start voice";
+      voiceButton.textContent = "开始说话";
       if (blob.size > 0) {
         uploadRecording(blob);
       } else {
         voiceButton.disabled = false;
-        setVoiceStatus("No audio recorded.");
+        setVoiceStatus("没有录到语音。");
       }
     };
     mediaRecorder.start();
-    voiceButton.textContent = "Send voice";
-    setVoiceStatus("Recording. Click again to send.");
+    voiceButton.textContent = "发送语音";
+    setVoiceStatus("正在录音，请再次点击发送。");
     monitorVolume();
   }
 
@@ -304,7 +304,7 @@
     if (!mediaRecorder || mediaRecorder.state === "inactive") return;
     voiceButton.disabled = true;
     mediaRecorder.stop();
-    setVoiceStatus("Recognizing...");
+    setVoiceStatus("正在识别...");
   }
 
   async function uploadRecording(blob) {
@@ -317,16 +317,16 @@
       });
       const data = await response.json();
       if (data.status !== "ok" || !data.text) {
-        setVoiceStatus(data.message || "No speech recognized.");
+        setVoiceStatus(data.message || "未识别到语音。");
         voiceButton.disabled = false;
         return;
       }
-      setVoiceStatus("Recognized: " + data.text);
+      setVoiceStatus("已识别：" + data.text);
       voiceButton.disabled = false;
       sendMessage(data.text);
     } catch (error) {
-      setVoiceStatus("ASR upload failed.");
-      setStatus("Could not recognize microphone audio.", "error");
+      setVoiceStatus("语音上传失败。");
+      setStatus("无法识别麦克风语音。", "error");
       voiceButton.disabled = false;
     }
   }
@@ -351,7 +351,7 @@
     event.preventDefault();
     const text = messageInput.value.trim();
     if (!text) {
-      setStatus("Type a message before sending.", "warning");
+      setStatus("请先输入消息再发送。", "warning");
       return;
     }
     messageInput.value = "";
@@ -372,7 +372,7 @@
   });
 
   interruptButton.addEventListener("click", function () {
-    interruptCurrent("Interrupted.");
+    interruptCurrent("已打断。");
   });
 
   voiceButton.addEventListener("click", function () {
@@ -384,7 +384,7 @@
     const value = deviceIdInput.value.trim() || "web-client";
     deviceIdInput.value = value;
     localStorage.setItem("xiaozhi-web-device-id", value);
-    setStatus("Device ID saved.");
+    setStatus("设备 ID 已保存。");
   });
 
   deviceIdInput.value = getDeviceId();

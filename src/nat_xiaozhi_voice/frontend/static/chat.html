@@ -3,48 +3,48 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Web Chat</title>
+  <title>小智语音对话</title>
   <link rel="stylesheet" href="/chat.css">
 </head>
 <body>
   <main class="app-shell">
     <header class="topbar">
       <div>
-        <h1>Web Chat</h1>
-        <p id="statusText" class="status-text">Checking service...</p>
+        <h1>小智语音对话</h1>
+        <p id="statusText" class="status-text">正在检查服务...</p>
       </div>
-      <div class="toolbar" aria-label="Chat controls">
+      <div class="toolbar" aria-label="对话控制">
         <label class="toggle">
           <input id="autoPlayToggle" type="checkbox" checked>
-          <span>Auto play</span>
+          <span>自动播放</span>
         </label>
-        <button id="voiceButton" class="secondary-button" type="button">Start voice</button>
-        <button id="interruptButton" class="secondary-button danger-button" type="button" disabled>Interrupt</button>
-        <button id="replayButton" class="secondary-button" type="button" disabled>Replay</button>
+        <button id="voiceButton" class="secondary-button" type="button">开始说话</button>
+        <button id="interruptButton" class="secondary-button danger-button" type="button" disabled>打断</button>
+        <button id="replayButton" class="secondary-button" type="button" disabled>重播</button>
       </div>
     </header>
 
-    <section class="device-row" aria-label="Device settings">
-      <label for="deviceIdInput">Device ID</label>
+    <section class="device-row" aria-label="设备设置">
+      <label for="deviceIdInput">设备 ID</label>
       <input id="deviceIdInput" class="device-input" type="text" spellcheck="false">
-      <button id="saveDeviceButton" class="secondary-button" type="button">Save</button>
+      <button id="saveDeviceButton" class="secondary-button" type="button">保存</button>
     </section>
 
-    <section id="messageList" class="message-list" aria-live="polite" aria-label="Conversation">
+    <section id="messageList" class="message-list" aria-live="polite" aria-label="对话内容">
       <div class="empty-state">
-        <strong>Ready.</strong>
-        <span>Type a message to talk with Xiaozhi.</span>
+        <strong>准备好了。</strong>
+        <span>输入文字，或点击“开始说话”和小智对话。</span>
       </div>
     </section>
 
-    <section class="voice-row" aria-label="Voice status">
+    <section class="voice-row" aria-label="语音状态">
       <div class="meter" aria-hidden="true"><span id="volumeMeter"></span></div>
-      <span id="voiceStatus">Voice idle.</span>
+      <span id="voiceStatus">语音待机。</span>
     </section>
 
     <form id="composerForm" class="composer">
-      <textarea id="messageInput" rows="2" placeholder="Type a message..." autocomplete="off"></textarea>
-      <button id="sendButton" class="primary-button" type="submit">Send</button>
+      <textarea id="messageInput" rows="2" placeholder="输入消息..." autocomplete="off"></textarea>
+      <button id="sendButton" class="primary-button" type="submit">发送</button>
     </form>
   </main>
 
