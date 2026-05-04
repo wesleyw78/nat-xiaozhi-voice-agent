@@ -31,6 +31,7 @@ RUN printf 'torch==2.11.0+cu128\ntorchaudio==2.11.0+cu128\n' > /tmp/torch-cu128-
     touch src/nat_xiaozhi_voice/__init__.py && \
     uv pip install --system -e . \
         --extra-index-url https://download.pytorch.org/whl/cu128 \
+        --index-strategy unsafe-best-match \
         --constraint /tmp/torch-cu128-constraints.txt && \
     rm -rf src/nat_xiaozhi_voice
 
